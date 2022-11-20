@@ -1,0 +1,202 @@
+syntax = "proto3";
+
+option go_package = "encr.dev/proto/encore/daemon";
+
+import "google/protobuf/empty.proto";
+
+package encore.daemon;
+
+service Daemon {
+  // Run runs the application.
+  rpc Run (RunRequest) returns (stream CommandMessage);
+  // Test runs tests.
+  rpc Test (TestRequest) returns (stream CommandMessage);
+  // ExecScript executes a one-off script.
+  rpc ExecScript (ExecScriptRequest) returns (stream CommandMessage);
+  // Check checks the app for compilation errors.
+  rpc Check (CheckRequest) returns (stream CommandMessage);
+  // Export exports the app in various formats.
+  rpc Export (ExportRequest) returns (stream CommandMessage);
+
+  // DBConnect starts the database and returns the DSN for connecting to it.
+  rpc DBConnect (DBConnectRequest) returns (DBConnectResponse);
+  // DBProxy starts a local database proxy for connecting to remote databases
+  // on the encore.dev platform.
+  rpc DBProxy (DBProxyRequest) returns (stream CommandMessage);
+  // DBReset resets the given databases, recreating them from scratch.
+  rpc DBReset (DBResetRequest) returns (stream CommandMessage);
+
+  // GenClient generates a client based on the app's API.
+  rpc GenClient (GenClientRequest) returns (GenClientResponse);
+  // GenWrappers generates user-facing wrapper code.
+  rpc GenWrappers (GenWrappersRequest) returns (GenWrappersResponse);
+  // SetSecret sets a secret key on the encore.dev platform.
+  rpc SetSecret (SetSecretRequest) returns (SetSecretResponse);
+  // Version reports the daemon version.
+  rpc Version (google.protobuf.Empty) returns (VersionResponse);
+}
+
+message CommandMessage {
+  oneof msg {
+    CommandOutput output = 1;
+    CommandExit exit = 2;
+    CommandDisplayErrors errors = 3;
+  }
+}
+
+message CommandOutput {
+  bytes stdout = 1;
+  bytes stderr = 2;
+}
+
+message CommandExit {
+  int32 code = 1; // exit code
+}
+
+message CommandDisplayErrors {
+  bytes errinsrc = 1; // error messages in source code
+}
+
+message RunRequest {
+  // app_root is the absolute filesystem path to the Encore app root.
+  string app_root = 1;
+  // working_dir is the working directory relative to the app_root,
+  // for formatting relative paths in error messages.
+  string working_dir = 2;
+  // tunnel, if true, creates a tunnel environment on the encore.dev platform
+  // that forwards requests to the running app.
+  bool tunnel = 3;
+  // debug, if true, compiles the app with flags that improve the debugging experience.
+  bool debug = 4;
+  // watch, if true, enables live reloading of the app whenever the source changes.
+  bool watch = 5;
+  // listen_addr is the address to listen on.
+  string listen_addr = 6;
+  // environ is the environment to set for the running command.
+  // Each entry is a string in the format "KEY=VALUE", identical to os.Environ().
+  repeated string environ = 7;
+}
+
+message TestRequest {
+  string app_root = 1;
+  string working_dir = 2;
+  repeated string args = 3;
+  // environ is the environment to set for the running command.
+  // Each entry is a string in the format "KEY=VALUE", identical to os.Environ().
+  repeated string environ = 4;
+}
+
+message ExecScriptRequest {
+  string app_root = 1;
+  string working_dir = 2;
+  string script_rel_path = 3;
+  repeated string script_args = 4;
+  // environ is the environment to set for the running command.
+  // Each entry is a string in the format "KEY=VALUE", identical to os.Environ().
+  repeated string environ = 5;
+}
+
+message CheckRequest {
+  string app_root = 1;
+  string working_dir = 2;
+  // codegen_debug, if true, dumps the generated code and prints where it is located.
+  bool codegen_debug = 3;
+}
+
+message ExportRequest {
+  string app_root = 1;
+
+  // goos and goarch specify the platform configuration to compile
+  // the application for. The values must be valid GOOS/GOARCH values.
+  string goos = 2;
+  string goarch = 3;
+
+  // cgo_enabled specifies whether to build with cgo enabled.
+  // The host must have a valid C compiler for the target platform
+  // if true.
+  bool cgo_enabled = 4;
+
+  oneof format {
+    // docker specifies to export the app as a docker image.
+    DockerExportParams docker = 5;
+  }
+}
+
+message DockerExportParams {
+  // local_daemon_tag specifies what to tag the image as
+  // in the local Docker daemon. If empty the export does not
+  // interact with (or require) the local docker daemon at all.
+  string local_daemon_tag = 1;
+
+  // push_destination_tag specifies the remote registry tag
+  // to push the exported image to. If empty the built image
+  // is not pushed anywhere.
+  string push_destination_tag = 2;
+
+  // base_image_tag is the base image to build the image from.
+  string base_image_tag = 3;
+}
+
+message ResetDBRequest {
+  string app_root = 1;
+  repeated string services = 2; // services to reset
+}
+
+message DBConnectRequest {
+  string app_root = 1;
+  string db_name = 2;
+  string env_name = 3; // optional
+}
+
+message DBConnectResponse {
+  string dsn = 1;
+}
+
+message DBProxyRequest {
+  string app_root = 1;
+  string env_name = 2; // optional
+  int32 port = 3; // optional
+}
+
+message DBResetRequest {
+  string app_root = 1;
+  repeated string services = 2; // services to reset
+}
+
+message GenClientRequest {
+  string app_id = 1;
+  string env_name = 2;
+  string lang = 3;
+  string filepath = 4;
+}
+
+message GenClientResponse {
+  bytes code = 1;
+}
+
+message GenWrappersRequest {
+  string app_root = 1;
+}
+
+message GenWrappersResponse {
+}
+
+message SetSecretRequest {
+  enum Type {
+    DEVELOPMENT = 0;
+    PRODUCTION = 1;
+  }
+  string app_root = 1;
+  string key = 2;
+  string value = 3;
+  Type type = 4;
+}
+
+message SetSecretResponse {
+  bool created = 1; // whether or not the secret was created (as opposed to updated)
+}
+
+message VersionResponse {
+  string version = 1;
+  string config_hash = 2;
+}
